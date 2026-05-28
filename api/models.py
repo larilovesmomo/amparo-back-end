@@ -24,6 +24,9 @@ class Medicamento(models.Model):
     ]
     dosagem_unidade = models.CharField(max_length=20, choices=UNIDADE_CHOICES, default='mg')
     observacao = models.TextField(null=True, blank=True)
+    
+    estoque_atual = models.DecimalField(max_digits=10, decimal_places=2, default=0.0, null=True, blank=True)
+    aviso_estoque_minimo = models.IntegerField(default=5, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -74,6 +77,41 @@ class RegistroMedicacao(models.Model):
 
     class Meta:
         verbose_name_plural = "Registros de Medicação"
+        
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        
+        if is_new and self.tomou:
+            self._atualizar_estoque(diminuir=True)
+            
+        elif not is_new:
+            registro_antigo = RegistroMedicacao.objects.get(pk=self.pk)
+            
+            if not registro_antigo.tomou and self.tomou:
+                self._atualizar_estoque(diminuir=True)
+                
+            elif registro_antigo.tomou and not self.tomou:
+                self._atualizar_estoque(diminuir=False)
+
+        super().save(*args, **kwargs)
+
+    def _atualizar_estoque(self, diminuir=True):
+        medicamento = self.agendamento.medicamento
+        
+        if medicamento.estoque_atual is not None:
+            if medicamento.dosagem_unidade in ['mg', 'g']:
+                qtd_a_movimentar = 1
+            else:
+                qtd_a_movimentar = medicamento.dosagem_valor if medicamento.dosagem_valor else 1
+                
+            if diminuir:
+                medicamento.estoque_atual -= qtd_a_movimentar
+                if medicamento.estoque_atual < 0:
+                    medicamento.estoque_atual = 0 
+            else:
+                medicamento.estoque_atual += qtd_a_movimentar
+                
+            medicamento.save()
 
     def __str__(self):
         status = "Tomou" if self.tomou else "Não tomou"
