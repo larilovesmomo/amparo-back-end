@@ -20,7 +20,11 @@ class MedicamentoIntegrationTest(APITestCase):
             "dosagem_unidade": "mg",
             "horario_inicio": "08:00:00",
             "intervalo": 8,
-            "duracao_valor": 7
+            "duracao_valor": 7,
+            "duracao_unidade": "dias",
+            "observacao": "Tomar após as refeições",
+            "estoque_atual": 20,
+            "aviso_estoque_minimo": 5
         }
 
         response = self.client.post('/api/medicamentos/', payload, format='json')

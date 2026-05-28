@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import Paciente, Medicamento, Agendamento, RegistroMedicacao
+from datetime import date
 
 class PacienteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,14 +35,45 @@ class AgendamentoSimplesSerializer(serializers.ModelSerializer):
         fields = ['id', 'horario', 'frequencia', 'data_fim']
 
 class MedicamentoSerializer(serializers.ModelSerializer):
-    paciente = PacienteSerializer(read_only=True)
-    dosagem_formatada = serializers.CharField(read_only=True)
-    agendamentos = AgendamentoSimplesSerializer(many=True, read_only=True)
+    horario_inicio = serializers.SerializerMethodField()
+    horario_fim = serializers.SerializerMethodField()
+    intervalo = serializers.SerializerMethodField()
+    duracao_valor = serializers.SerializerMethodField()
 
     class Meta:
         model = Medicamento
+        fields = [
+            'id', 'nome', 'dosagem_valor', 'dosagem_unidade', 'observacao', 
+            'estoque_atual', 'aviso_estoque_minimo', 'is_active',
+            'horario_inicio', 'horario_fim', 'intervalo', 'duracao_valor'
+        ]
 
-        fields = ['id', 'nome', 'dosagem_valor', 'dosagem_unidade', 'observacao', 'paciente', 'dosagem_formatada', 'agendamentos', 'is_active']
+    def get_horario_inicio(self, obj):
+        primeiro = obj.agendamentos.order_by('horario').first()
+        return primeiro.horario.strftime('%H:%M:%S') if primeiro else None
+
+    def get_horario_fim(self, obj):
+        if obj.agendamentos.count() > 1:
+            ultimo = obj.agendamentos.order_by('horario').last()
+            return ultimo.horario.strftime('%H:%M:%S') if ultimo else None
+        return None
+
+    def get_intervalo(self, obj):
+        agendamentos = list(obj.agendamentos.order_by('horario'))
+        if len(agendamentos) > 1:
+            h1 = agendamentos[0].horario
+            h2 = agendamentos[1].horario
+            return h2.hour - h1.hour
+        elif len(agendamentos) == 1:
+            return 24  
+        return None
+
+    def get_duracao_valor(self, obj):
+        agendamento = obj.agendamentos.first()
+        if agendamento and agendamento.data_fim:
+            delta = agendamento.data_fim - date.today()
+            return max(0, delta.days)
+        return None
 
 class AgendamentoSerializer(serializers.ModelSerializer):
     paciente = PacienteSerializer(read_only=True)
@@ -78,13 +110,13 @@ class RegistroMedicacaoUpdateSerializer(serializers.ModelSerializer):
         
 class MedicamentoComAgendamentoSerializer(serializers.Serializer):
     
-    # Campos do Medicamento
     nome = serializers.CharField(max_length=255)
     dosagem_valor = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     dosagem_unidade = serializers.CharField(max_length=20, required=False)
     observacao = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    estoque_atual = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    aviso_estoque_minimo = serializers.IntegerField(required=False, allow_null=True)
 
-    # Campos do Agendamento
     horario_inicio = serializers.TimeField()
     horario_fim = serializers.TimeField(required=False, allow_null=True)
     intervalo = serializers.IntegerField(min_value=1, max_value=24)

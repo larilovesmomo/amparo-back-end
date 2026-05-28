@@ -46,7 +46,9 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
             nome=validated_data['nome'],
             dosagem_valor=validated_data.get('dosagem_valor'),
             dosagem_unidade=validated_data.get('dosagem_unidade', 'mg'),
-            observacao=validated_data.get('observacao', '')
+            observacao=validated_data.get('observacao', ''),
+            estoque_atual=validated_data.get('estoque_atual', 0),
+            aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
         )
 
         data_fim_tratamento = None
@@ -98,6 +100,10 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
         medicamento.dosagem_valor = validated_data.get('dosagem_valor')
         medicamento.dosagem_unidade = validated_data.get('dosagem_unidade')
         medicamento.observacao = validated_data.get('observacao', '')
+        if 'estoque_atual' in validated_data:
+            medicamento.estoque_atual = validated_data['estoque_atual']
+        if 'aviso_estoque_minimo' in validated_data:
+            medicamento.aviso_estoque_minimo = validated_data['aviso_estoque_minimo']
         medicamento.save()
         
         medicamento.agendamentos.all().delete()
@@ -132,9 +138,13 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
             if len(agendamentos_criados) >= (24 // intervalo_horas) + 1:
                 break
         
-        serializer_resposta = self.get_serializer(medicamento)
-    
-        return Response(serializer_resposta.data, status=status.HTTP_200_OK)
+        agendamentos_data = AgendamentoSerializer(agendamentos_criados, many=True).data
+        medicamento_data = MedicamentoSerializer(medicamento).data
+        
+        return Response({
+            "medicamento": medicamento_data,
+            "agendamentos": agendamentos_data
+        }, status=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
         medicamento = self.get_object()
