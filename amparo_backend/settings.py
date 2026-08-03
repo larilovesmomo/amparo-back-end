@@ -22,7 +22,6 @@ load_dotenv()
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
-
 SECRET_KEY = os.environ.get('SECRET_KEY', 'amparomossoro2025')
 
 # SECURITY WARNING: don't run with debug turned on in production!
