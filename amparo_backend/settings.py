@@ -91,11 +91,11 @@ WSGI_APPLICATION = 'amparo_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('railway'),
-        'USER': os.environ.get('postgres'),
-        'PASSWORD': os.environ.get('qAXXoISzAyKoTWARGrfZyEHEPRCjkDaq'),
-        'HOST': os.environ.get('postgres.railway.internal'),
-        'PORT': os.environ.get('5432'),
+        'NAME': os.environ.get('PGDATABASE'),
+        'USER': os.environ.get('PGUSER'),
+        'PASSWORD': os.environ.get('PGPASSWORD'),
+        'HOST': os.environ.get('PGHOST'),
+        'PORT': os.environ.get('PGPORT'),
     }
 }
 
