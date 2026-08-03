@@ -99,6 +99,13 @@ DATABASES = {
     }
 }
 
+print("===== VARIAVEIS RAILWAY =====")
+print("HOST:", os.environ.get("PGHOST"))
+print("PORT:", os.environ.get("PGPORT"))
+print("DATABASE:", os.environ.get("PGDATABASE"))
+print("USER:", os.environ.get("PGUSER"))
+print("=============================")
+
 if 'test' in sys.argv:
     DATABASES['default']['NAME'] = None # Força a criação a partir do template
     DATABASES['default']['TEST'] = {
