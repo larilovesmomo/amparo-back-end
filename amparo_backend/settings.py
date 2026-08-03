@@ -99,19 +99,11 @@ DATABASES = {
     }
 }
 
-print("===== VARIAVEIS RAILWAY =====")
-print("HOST:", os.environ.get("PGHOST"))
-print("PORT:", os.environ.get("PGPORT"))
-print("DATABASE:", os.environ.get("PGDATABASE"))
-print("USER:", os.environ.get("PGUSER"))
-print("=============================")
-
 if 'test' in sys.argv:
     DATABASES['default']['NAME'] = None # Força a criação a partir do template
     DATABASES['default']['TEST'] = {
         'NAME': os.environ.get('DB_NAME', 'test_amparo_db'),
     }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
