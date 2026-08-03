@@ -28,7 +28,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'amparomossoro2025')
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "https://amparo-back-end-production.up.railway.app/",
+    "amparo-back-end-production.up.railway.app",
 ]
 
 # Application definition
@@ -91,11 +91,11 @@ WSGI_APPLICATION = 'amparo_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'amparo_db'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'NAME': os.environ.get('railway'),
+        'USER': os.environ.get('postgres'),
+        'PASSWORD': os.environ.get('qAXXoISzAyKoTWARGrfZyEHEPRCjkDaq'),
+        'HOST': os.environ.get('postgres.railway.internal'),
+        'PORT': os.environ.get('5432'),
     }
 }
 
