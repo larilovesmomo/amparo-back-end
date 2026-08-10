@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.db import transaction
 
 from datetime import date, timedelta, datetime
 from rest_framework import viewsets, permissions
@@ -8,9 +9,11 @@ from .models import Paciente, Medicamento, Agendamento, RegistroMedicacao
 from .serializers import PacienteSerializer, MedicamentoSerializer, AgendamentoSerializer, RegistroMedicacaoSerializer, PacienteCreateSerializer, MedicamentoComAgendamentoSerializer, RegistroMedicacaoCreateSerializer, RegistroMedicacaoUpdateSerializer
 
 class PacienteViewSet(viewsets.ModelViewSet):
-    queryset = Paciente.objects.all()
     serializer_class = PacienteSerializer
     
+    def get_queryset(self):
+        return Paciente.objects.filter(pk=self.request.user.pk)
+
     def get_serializer_class(self):
         if self.action == 'create':
             return PacienteCreateSerializer
@@ -37,57 +40,57 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
         return self.serializer_class
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        validated_data = serializer.validated_data
+        with transaction.atomic():
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data
 
-        medicamento = Medicamento.objects.create(
-            paciente=request.user,
-            nome=validated_data['nome'],
-            dosagem_valor=validated_data.get('dosagem_valor'),
-            dosagem_unidade=validated_data.get('dosagem_unidade', 'mg'),
-            observacao=validated_data.get('observacao', ''),
-            estoque_atual=validated_data.get('estoque_atual', 0),
-            aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
-        )
-
-        data_fim_tratamento = None
-        if validated_data.get('duracao_valor'):
-            data_fim_tratamento = date.today() + timedelta(days=validated_data['duracao_valor'])
-
-
-        horario_inicio_time = validated_data['horario_inicio']
-        horario_fim_time = validated_data.get('horario_fim') 
-        intervalo_horas = validated_data['intervalo']
-
-        horario_atual_dt = datetime.combine(date.today(), horario_inicio_time)
-        
-        limite_do_dia_dt = datetime.combine(date.today(), horario_fim_time) if horario_fim_time else datetime.combine(date.today(), datetime.max.time())
-
-        agendamentos_criados = []
-        
-        while horario_atual_dt <= limite_do_dia_dt:
-            agendamento = Agendamento.objects.create(
+            medicamento = Medicamento.objects.create(
                 paciente=request.user,
-                medicamento=medicamento,
-                horario=horario_atual_dt.time(),
-                frequencia='Diário',
-                data_fim=data_fim_tratamento
+                nome=validated_data['nome'],
+                dosagem_valor=validated_data.get('dosagem_valor'),
+                dosagem_unidade=validated_data.get('dosagem_unidade', 'mg'),
+                observacao=validated_data.get('observacao', ''),
+                estoque_atual=validated_data.get('estoque_atual', 0),
+                aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
             )
-            agendamentos_criados.append(agendamento)
+
+            data_fim_tratamento = None
+            if validated_data.get('duracao_valor'):
+                data_fim_tratamento = date.today() + timedelta(days=validated_data['duracao_valor'])
+
+            horario_inicio_time = validated_data['horario_inicio']
+            horario_fim_time = validated_data.get('horario_fim') 
+            intervalo_horas = validated_data['intervalo']
+
+            horario_atual_dt = datetime.combine(date.today(), horario_inicio_time)
             
-            horario_atual_dt += timedelta(hours=intervalo_horas)
+            limite_do_dia_dt = datetime.combine(date.today(), horario_fim_time) if horario_fim_time else datetime.combine(date.today(), datetime.max.time())
+
+            agendamentos_criados = []
             
-            if len(agendamentos_criados) >= (24 // intervalo_horas) + 1:
-                break
-        
-        agendamentos_data = AgendamentoSerializer(agendamentos_criados, many=True).data
-        medicamento_data = MedicamentoSerializer(medicamento).data
-        
-        return Response({
-            "medicamento": medicamento_data,
-            "agendamentos": agendamentos_data
-        }, status=status.HTTP_201_CREATED)
+            while horario_atual_dt <= limite_do_dia_dt:
+                agendamento = Agendamento.objects.create(
+                    paciente=request.user,
+                    medicamento=medicamento,
+                    horario=horario_atual_dt.time(),
+                    frequencia='Diário',
+                    data_fim=data_fim_tratamento
+                )
+                agendamentos_criados.append(agendamento)
+                
+                horario_atual_dt += timedelta(hours=intervalo_horas)
+                
+                if len(agendamentos_criados) >= (24 // intervalo_horas) + 1:
+                    break
+            
+            agendamentos_data = AgendamentoSerializer(agendamentos_criados, many=True).data
+            medicamento_data = MedicamentoSerializer(medicamento).data
+            
+            return Response({
+                "medicamento": medicamento_data,
+                "agendamentos": agendamentos_data
+            }, status=status.HTTP_201_CREATED)
         
     def update(self, request, *args, **kwargs):
         serializer = MedicamentoComAgendamentoSerializer(data=request.data)
