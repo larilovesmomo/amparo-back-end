@@ -92,11 +92,17 @@ class RegistroMedicacaoSerializer(serializers.ModelSerializer):
         fields = ['id', 'data_hora_tomada', 'tomou', 'agendamento']
         
 class RegistroMedicacaoCreateSerializer(serializers.ModelSerializer):
-    agendamento = serializers.PrimaryKeyRelatedField(queryset=Agendamento.objects.all())
+    agendamento = serializers.PrimaryKeyRelatedField(queryset=Agendamento.objects.none())
 
     class Meta:
         model = RegistroMedicacao
         fields = ['agendamento', 'tomou', 'data_hora_tomada']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request is not None:
+            self.fields['agendamento'].queryset = Agendamento.objects.filter(paciente=request.user)
         
 class RegistroMedicacaoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
