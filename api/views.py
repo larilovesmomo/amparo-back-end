@@ -113,7 +113,7 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
         
         data_fim_tratamento = None
         if validated_data.get('duracao_valor'):
-            data_fim_tratamento = date.today() + timedelta(days=validated_data['duracao_valor'])
+            data_fim_tratamento = medicamento.created_at.date() + timedelta(days=validated_data['duracao_valor'])
 
 
         horario_inicio_time = validated_data['horario_inicio']
