@@ -81,7 +81,7 @@ class AgendamentoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Agendamento
-        fields = ['id', 'horario', 'frequencia', 'paciente', 'medicamento', 'data_fim']
+        fields = ['id', 'horario', 'frequencia', 'paciente', 'medicamento', 'data_fim', 'created_at']
         
         
 class RegistroMedicacaoSerializer(serializers.ModelSerializer):
