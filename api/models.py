@@ -71,6 +71,7 @@ class RegistroMedicacao(models.Model):
 
     data_hora_tomada = models.DateTimeField(null=False, blank=False)
     tomou = models.BooleanField(default=False)
+    quantidade_descontada = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -105,11 +106,13 @@ class RegistroMedicacao(models.Model):
                 qtd_a_movimentar = medicamento.dosagem_valor if medicamento.dosagem_valor else 1
                 
             if diminuir:
+                estoque_antes = medicamento.estoque_atual
                 medicamento.estoque_atual -= qtd_a_movimentar
                 if medicamento.estoque_atual < 0:
-                    medicamento.estoque_atual = 0 
+                    medicamento.estoque_atual = 0
+                self.quantidade_descontada = estoque_antes - medicamento.estoque_atual
             else:
-                medicamento.estoque_atual += qtd_a_movimentar
+                medicamento.estoque_atual += self.quantidade_descontada
                 
             medicamento.save()
 

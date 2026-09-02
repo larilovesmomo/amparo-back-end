@@ -2,9 +2,121 @@
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from .models import Medicamento, Agendamento
+from django.utils import timezone
+from decimal import Decimal
+from .models import Medicamento, Agendamento, RegistroMedicacao
 
 Paciente = get_user_model()
+
+class RegistroMedicacaoEstoqueTest(APITestCase):
+    """Testes de correção do BUG 06: inflação de estoque ao desfazer dose."""
+
+    def setUp(self):
+        self.user = Paciente.objects.create_user(username='testuser', password='testpassword123')
+        self.medicamento = Medicamento.objects.create(
+            paciente=self.user,
+            nome='Ibuprofeno',
+            dosagem_valor=Decimal('10.00'),
+            dosagem_unidade='comprimido(s)',
+            estoque_atual=Decimal('20.00'),
+        )
+        self.agendamento = Agendamento.objects.create(
+            paciente=self.user,
+            medicamento=self.medicamento,
+            horario='08:00:00',
+            frequencia='Diário',
+        )
+
+    def test_estoque_maior_que_dosagem(self):
+        """Estoque 20 / dose 10 → tomar = 10, desfazer = 20."""
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('20.00'))
+
+        reg = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento,
+            data_hora_tomada=timezone.now(),
+            tomou=True,
+        )
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('10.00'))
+
+        reg.tomou = False
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('20.00'))
+
+    def test_estoque_menor_que_dosagem(self):
+        """Estoque 5 / dose 10 → tomar = 0, desfazer = 5."""
+        self.medicamento.estoque_atual = Decimal('5.00')
+        self.medicamento.save()
+
+        reg = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento,
+            data_hora_tomada=timezone.now(),
+            tomou=True,
+        )
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('0.00'))
+
+        reg.tomou = False
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('5.00'))
+
+    def test_estoque_zero(self):
+        """Estoque 0 / dose 10 → tomar = 0, desfazer = 0."""
+        self.medicamento.estoque_atual = Decimal('0.00')
+        self.medicamento.save()
+
+        reg = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento,
+            data_hora_tomada=timezone.now(),
+            tomou=True,
+        )
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('0.00'))
+
+        reg.tomou = False
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('0.00'))
+
+    def test_ciclo_completo_false_true_false_true_false(self):
+        """false → true → false → true → false, estoque não inflaciona nem desconta duas vezes."""
+        self.medicamento.estoque_atual = Decimal('5.00')
+        self.medicamento.save()
+
+        reg = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento,
+            data_hora_tomada=timezone.now(),
+            tomou=False,
+        )
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('5.00'))
+
+        reg.tomou = True
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('0.00'))
+
+        reg.tomou = False
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('5.00'))
+
+        reg.tomou = True
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('0.00'))
+
+        reg.tomou = False
+        reg.save()
+        self.medicamento.refresh_from_db()
+        self.assertEqual(self.medicamento.estoque_atual, Decimal('5.00'))
+
 
 class MedicamentoIntegrationTest(APITestCase):
     
