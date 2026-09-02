@@ -89,14 +89,15 @@ class RegistroMedicacaoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = RegistroMedicacao
-        fields = ['id', 'data_hora_tomada', 'tomou', 'agendamento']
+        fields = ['id', 'data_hora_tomada', 'tomou', 'quantidade_descontada', 'agendamento']
         
 class RegistroMedicacaoCreateSerializer(serializers.ModelSerializer):
     agendamento = serializers.PrimaryKeyRelatedField(queryset=Agendamento.objects.none())
 
     class Meta:
         model = RegistroMedicacao
-        fields = ['agendamento', 'tomou', 'data_hora_tomada']
+        fields = ['agendamento', 'tomou', 'data_hora_tomada', 'quantidade_descontada']
+        read_only_fields = ['quantidade_descontada']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
