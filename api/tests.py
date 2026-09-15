@@ -291,3 +291,117 @@ class MedicamentoInativacaoTest(APITestCase):
         """Reativar medicamento inexistente retorna 404."""
         response = self.client.post('/api/medicamentos/9999/reativar/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class RegistroMedicacaoIsAtivoTest(APITestCase):
+    """Testes de impedimento de registro de dose para medicamento inativo."""
+
+    def setUp(self):
+        self.user = Paciente.objects.create_user(username='testuser', password='testpassword123')
+        self.other_user = Paciente.objects.create_user(username='otheruser', password='otherpassword123')
+        self.client.force_authenticate(user=self.user)
+
+        self.medicamento_ativo = Medicamento.objects.create(
+            paciente=self.user,
+            nome='Ibuprofeno',
+            dosagem_valor=Decimal('600.00'),
+            dosagem_unidade='mg',
+            estoque_atual=Decimal('20.00'),
+            is_active=True,
+        )
+        self.agendamento_ativo = Agendamento.objects.create(
+            paciente=self.user,
+            medicamento=self.medicamento_ativo,
+            horario='08:00:00',
+            frequencia='Diário',
+        )
+
+        self.medicamento_inativo = Medicamento.objects.create(
+            paciente=self.user,
+            nome='Amoxicilina',
+            dosagem_valor=Decimal('500.00'),
+            dosagem_unidade='mg',
+            estoque_atual=Decimal('10.00'),
+            is_active=False,
+        )
+        self.agendamento_inativo = Agendamento.objects.create(
+            paciente=self.user,
+            medicamento=self.medicamento_inativo,
+            horario='08:00:00',
+            frequencia='Diário',
+        )
+
+        self.other_medicamento = Medicamento.objects.create(
+            paciente=self.other_user,
+            nome='Outro Remedio',
+            dosagem_valor=Decimal('200.00'),
+            dosagem_unidade='mg',
+            estoque_atual=Decimal('10.00'),
+            is_active=True,
+        )
+        self.other_agendamento = Agendamento.objects.create(
+            paciente=self.other_user,
+            medicamento=self.other_medicamento,
+            horario='09:00:00',
+            frequencia='Diário',
+        )
+
+    def test_registro_para_medicamento_ativo_funciona(self):
+        """Registro de dose para medicamento ativo continua funcionando."""
+        payload = {
+            'agendamento': self.agendamento_ativo.pk,
+            'tomou': True,
+            'data_hora_tomada': timezone.now().isoformat(),
+        }
+        response = self.client.post('/api/registros/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(RegistroMedicacao.objects.filter(agendamento=self.agendamento_ativo).exists())
+
+    def test_registro_para_medicamento_inativo_e_rejeitado(self):
+        """Registro de dose para medicamento inativo retorna erro 400."""
+        payload = {
+            'agendamento': self.agendamento_inativo.pk,
+            'tomou': True,
+            'data_hora_tomada': timezone.now().isoformat(),
+        }
+        response = self.client.post('/api/registros/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(RegistroMedicacao.objects.filter(agendamento=self.agendamento_inativo).exists())
+
+    def test_registros_historicos_preservados_apos_inativacao(self):
+        """Registros existentes antes da inativação permanecem no banco."""
+        reg = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento_inativo,
+            data_hora_tomada=timezone.now(),
+            tomou=True,
+        )
+
+        self.medicamento_inativo.is_active = False
+        self.medicamento_inativo.save()
+
+        self.assertTrue(RegistroMedicacao.objects.filter(pk=reg.pk).exists())
+
+    def test_usuario_nao_pode_registrar_dose_de_outro_usuario(self):
+        """Usuário não consegue registrar dose usando agendamento de outro usuário."""
+        payload = {
+            'agendamento': self.other_agendamento.pk,
+            'tomou': True,
+            'data_hora_tomada': timezone.now().isoformat(),
+        }
+        response = self.client.post('/api/registros/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(RegistroMedicacao.objects.filter(agendamento=self.other_agendamento).exists())
+
+    def test_registro_para_medicamento_inativo_e_rejeitado_mesmo_apos_reativacao_temporaria(self):
+        """Após reativação, registro volta a funcionar normalmente."""
+        self.medicamento_inativo.is_active = True
+        self.medicamento_inativo.save()
+
+        payload = {
+            'agendamento': self.agendamento_inativo.pk,
+            'tomou': True,
+            'data_hora_tomada': timezone.now().isoformat(),
+        }
+        response = self.client.post('/api/registros/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

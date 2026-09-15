@@ -103,7 +103,10 @@ class RegistroMedicacaoCreateSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get('request')
         if request is not None:
-            self.fields['agendamento'].queryset = Agendamento.objects.filter(paciente=request.user)
+            self.fields['agendamento'].queryset = Agendamento.objects.filter(
+                paciente=request.user,
+                medicamento__is_active=True
+            )
         
 class RegistroMedicacaoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
