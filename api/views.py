@@ -31,8 +31,15 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filtra para mostrar apenas os medicamentos ativos do usuário logado."""
-        return Medicamento.objects.filter(paciente=self.request.user, is_active=True).order_by('-nome')
+        """Retorna medicamentos do usuário logado.
+
+        Por padrão, apenas os ativos. Passando ?include_inactive=true,
+        retorna ativos e inativos.
+        """
+        queryset = Medicamento.objects.filter(paciente=self.request.user).order_by('-nome')
+        if self.request.query_params.get('include_inactive') != 'true':
+            queryset = queryset.filter(is_active=True)
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'create':
