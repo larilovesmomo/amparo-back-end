@@ -155,3 +155,139 @@ class MedicamentoIntegrationTest(APITestCase):
         
         primeiro_agendamento = Agendamento.objects.first()
         self.assertEqual(primeiro_agendamento.medicamento.nome, 'Ibuprofeno')
+
+
+class MedicamentoInativacaoTest(APITestCase):
+
+    def setUp(self):
+        self.user = Paciente.objects.create_user(username='testuser', password='testpassword123')
+        self.client.force_authenticate(user=self.user)
+        self.medicamento = Medicamento.objects.create(
+            paciente=self.user,
+            nome='Ibuprofeno',
+            dosagem_valor=Decimal('600.00'),
+            dosagem_unidade='mg',
+            estoque_atual=Decimal('20.00'),
+        )
+        self.agendamento = Agendamento.objects.create(
+            paciente=self.user,
+            medicamento=self.medicamento,
+            horario='08:00:00',
+            frequencia='Diário',
+        )
+        self.registro = RegistroMedicacao.objects.create(
+            paciente=self.user,
+            agendamento=self.agendamento,
+            data_hora_tomada=timezone.now(),
+            tomou=True,
+        )
+
+    def test_01_inativacao_preserva_historico(self):
+        """Inativação preserva Medicamento, Agendamento e RegistroMedicacao."""
+        response = self.client.post(f'/api/medicamentos/{self.medicamento.pk}/inativar/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.medicamento.refresh_from_db()
+        self.assertFalse(self.medicamento.is_active)
+
+        self.assertTrue(Agendamento.objects.filter(pk=self.agendamento.pk).exists())
+        self.assertTrue(RegistroMedicacao.objects.filter(pk=self.registro.pk).exists())
+        self.assertTrue(Medicamento.objects.filter(pk=self.medicamento.pk).exists())
+
+    def test_02_inativo_nao_aparece_listagem(self):
+        """Medicamento inativo não aparece na listagem de medicamentos ativos."""
+        response = self.client.post(f'/api/medicamentos/{self.medicamento.pk}/inativar/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/api/medicamentos/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 0)
+
+    def test_03_inativo_nao_gera_novas_acoes(self):
+        """Medicamento inativo: agendamentos existentes permanecem mas não são recriados."""
+        self.client.post(f'/api/medicamentos/{self.medicamento.pk}/inativar/')
+
+        self.medicamento.refresh_from_db()
+        self.assertFalse(self.medicamento.is_active)
+        agendamentos = Agendamento.objects.filter(medicamento=self.medicamento)
+        self.assertEqual(agendamentos.count(), 1)
+
+    def test_04_reativacao_restaura_funcionamento(self):
+        """Reativação restaura o medicamento para listagem e funcionalidade normal."""
+        self.client.post(f'/api/medicamentos/{self.medicamento.pk}/inativar/')
+        self.medicamento.refresh_from_db()
+        self.assertFalse(self.medicamento.is_active)
+
+        response = self.client.post(f'/api/medicamentos/{self.medicamento.pk}/reativar/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.medicamento.refresh_from_db()
+        self.assertTrue(self.medicamento.is_active)
+
+        response = self.client.get('/api/medicamentos/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome'], 'Ibuprofeno')
+
+    def test_05_cadastro_inativo_reativa_sem_duplicar(self):
+        """Cadastro de medicamento com mesmo nome de inativo reativa ao invés de duplicar."""
+        self.client.post(f'/api/medicamentos/{self.medicamento.pk}/inativar/')
+        self.medicamento.refresh_from_db()
+        self.assertFalse(self.medicamento.is_active)
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user, nome='Ibuprofeno').count(), 1)
+
+        payload = {
+            "nome": "Ibuprofeno",
+            "dosagem_valor": "500.00",
+            "dosagem_unidade": "mg",
+            "horario_inicio": "08:00:00",
+            "intervalo": 8,
+            "estoque_atual": 30,
+            "aviso_estoque_minimo": 5,
+        }
+        response = self.client.post('/api/medicamentos/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user, nome='Ibuprofeno').count(), 1)
+        self.medicamento.refresh_from_db()
+        self.assertTrue(self.medicamento.is_active)
+        self.assertEqual(self.medicamento.dosagem_valor, Decimal('500.00'))
+
+    def test_06_exclusao_definitiva_continua_funcionando(self):
+        """DELETE continua excluindo definitivamente o medicamento."""
+        response = self.client.delete(f'/api/medicamentos/{self.medicamento.pk}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Medicamento.objects.filter(pk=self.medicamento.pk).exists())
+
+    def test_07_medicamentos_ativos_funcionam_normalmente(self):
+        """Medicamentos ativos continuam aparecendo na listagem e funcionando normalmente."""
+        response = self.client.get('/api/medicamentos/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome'], 'Ibuprofeno')
+        self.assertTrue(response.data[0]['is_active'])
+
+        payload = {
+            "nome": "Paracetamol",
+            "dosagem_valor": "750.00",
+            "dosagem_unidade": "mg",
+            "horario_inicio": "08:00:00",
+            "intervalo": 6,
+            "estoque_atual": 10,
+            "aviso_estoque_minimo": 3,
+        }
+        response = self.client.post('/api/medicamentos/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get('/api/medicamentos/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+
+    def test_inativar_medico_inexistente(self):
+        """Inativar medicamento inexistente retorna 404."""
+        response = self.client.post('/api/medicamentos/9999/inativar/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reativar_medico_inexistente(self):
+        """Reativar medicamento inexistente retorna 404."""
+        response = self.client.post('/api/medicamentos/9999/reativar/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

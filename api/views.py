@@ -3,6 +3,7 @@ from django.db import transaction
 
 from datetime import date, timedelta, datetime
 from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Paciente, Medicamento, Agendamento, RegistroMedicacao
@@ -30,8 +31,8 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filtra para mostrar apenas os medicamentos do usuário logado."""
-        return Medicamento.objects.filter(paciente=self.request.user).order_by('-nome')
+        """Filtra para mostrar apenas os medicamentos ativos do usuário logado."""
+        return Medicamento.objects.filter(paciente=self.request.user, is_active=True).order_by('-nome')
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -45,15 +46,31 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             validated_data = serializer.validated_data
 
-            medicamento = Medicamento.objects.create(
+            medicamento_inativo = Medicamento.objects.filter(
                 paciente=request.user,
                 nome=validated_data['nome'],
-                dosagem_valor=validated_data.get('dosagem_valor'),
-                dosagem_unidade=validated_data.get('dosagem_unidade', 'mg'),
-                observacao=validated_data.get('observacao', ''),
-                estoque_atual=validated_data.get('estoque_atual', 0),
-                aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
-            )
+                is_active=False
+            ).first()
+
+            if medicamento_inativo:
+                medicamento = medicamento_inativo
+                medicamento.is_active = True
+                medicamento.dosagem_valor = validated_data.get('dosagem_valor')
+                medicamento.dosagem_unidade = validated_data.get('dosagem_unidade', 'mg')
+                medicamento.observacao = validated_data.get('observacao', '')
+                medicamento.estoque_atual = validated_data.get('estoque_atual', 0)
+                medicamento.aviso_estoque_minimo = validated_data.get('aviso_estoque_minimo', 5)
+                medicamento.save()
+            else:
+                medicamento = Medicamento.objects.create(
+                    paciente=request.user,
+                    nome=validated_data['nome'],
+                    dosagem_valor=validated_data.get('dosagem_valor'),
+                    dosagem_unidade=validated_data.get('dosagem_unidade', 'mg'),
+                    observacao=validated_data.get('observacao', ''),
+                    estoque_atual=validated_data.get('estoque_atual', 0),
+                    aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
+                )
 
             data_fim_tratamento = None
             if validated_data.get('duracao_valor'):
@@ -149,6 +166,48 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
             "agendamentos": agendamentos_data
         }, status=status.HTTP_200_OK)
     
+    @action(detail=True, methods=['post'], url_path='inativar')
+    def inativar(self, request, *args, **kwargs):
+        try:
+            medicamento = Medicamento.objects.get(
+                pk=kwargs['pk'],
+                paciente=request.user
+            )
+        except Medicamento.DoesNotExist:
+            return Response(
+                {"detail": "Medicamento não encontrado."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        medicamento.is_active = False
+        medicamento.save()
+
+        return Response({
+            "detail": "Medicamento inativado com sucesso.",
+            "medicamento": MedicamentoSerializer(medicamento).data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reativar')
+    def reativar(self, request, *args, **kwargs):
+        try:
+            medicamento = Medicamento.objects.get(
+                pk=kwargs['pk'],
+                paciente=request.user
+            )
+        except Medicamento.DoesNotExist:
+            return Response(
+                {"detail": "Medicamento não encontrado."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        medicamento.is_active = True
+        medicamento.save()
+
+        return Response({
+            "detail": "Medicamento reativado com sucesso.",
+            "medicamento": MedicamentoSerializer(medicamento).data
+        }, status=status.HTTP_200_OK)
+
     def destroy(self, request, *args, **kwargs):
         medicamento = self.get_object()
         medicamento.delete()
