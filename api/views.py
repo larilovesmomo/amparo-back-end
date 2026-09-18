@@ -94,7 +94,8 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
                 medicamento_data = MedicamentoSerializer(medicamento).data
                 return Response({
                     "medicamento": medicamento_data,
-                    "agendamentos": agendamentos_data
+                    "agendamentos": agendamentos_data,
+                    "reativado": False
                 }, status=status.HTTP_200_OK)
 
             data_fim_tratamento = None
@@ -131,7 +132,8 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
             
             return Response({
                 "medicamento": medicamento_data,
-                "agendamentos": agendamentos_data
+                "agendamentos": agendamentos_data,
+                "reativado": medicamento_inativo is not None
             }, status=status.HTTP_201_CREATED)
         
     def update(self, request, *args, **kwargs):
