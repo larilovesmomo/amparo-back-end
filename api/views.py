@@ -59,7 +59,15 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
                 is_active=False
             ).first()
 
-            if medicamento_inativo:
+            medicamento_ativo = Medicamento.objects.filter(
+                paciente=request.user,
+                nome=validated_data['nome'],
+                is_active=True
+            ).first()
+
+            if medicamento_ativo:
+                medicamento = medicamento_ativo
+            elif medicamento_inativo:
                 medicamento = medicamento_inativo
                 medicamento.is_active = True
                 medicamento.dosagem_valor = validated_data.get('dosagem_valor')
@@ -78,6 +86,15 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
                     estoque_atual=validated_data.get('estoque_atual', 0),
                     aviso_estoque_minimo=validated_data.get('aviso_estoque_minimo', 5)
                 )
+
+            if medicamento_ativo:
+                agendamentos = Agendamento.objects.filter(medicamento=medicamento)
+                agendamentos_data = AgendamentoSerializer(agendamentos, many=True).data
+                medicamento_data = MedicamentoSerializer(medicamento).data
+                return Response({
+                    "medicamento": medicamento_data,
+                    "agendamentos": agendamentos_data
+                }, status=status.HTTP_200_OK)
 
             data_fim_tratamento = None
             if validated_data.get('duracao_valor'):

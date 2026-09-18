@@ -405,3 +405,88 @@ class RegistroMedicacaoIsAtivoTest(APITestCase):
         }
         response = self.client.post('/api/registros/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+class MedicamentoDuplicacaoTest(APITestCase):
+    """Testes de impedimento de duplicação de medicamento ativo com mesmo nome."""
+
+    def setUp(self):
+        self.user = Paciente.objects.create_user(username='testuser', password='testpassword123')
+        self.client.force_authenticate(user=self.user)
+        self.payload = {
+            "nome": "Ibuprofeno",
+            "dosagem_valor": "600.00",
+            "dosagem_unidade": "mg",
+            "horario_inicio": "08:00:00",
+            "intervalo": 8,
+            "estoque_atual": 20,
+            "aviso_estoque_minimo": 5,
+        }
+
+    def test_criar_medicamento_inexistente_cria_apenas_um(self):
+        """Cadastro de medicamento inexistente cria apenas um registro."""
+        response = self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user).count(), 1)
+        self.assertEqual(Agendamento.objects.filter(medicamento__paciente=self.user).count(), 2)
+
+    def test_repetir_cadastro_mesmo_nome_nao_cria_outro(self):
+        """Repetir cadastro de medicamento ativo com mesmo nome não cria outro registro."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user, nome='Ibuprofeno').count(), 1)
+
+        response = self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user, nome='Ibuprofeno').count(), 1)
+
+    def test_retry_retorna_200_e_dados_existentes(self):
+        """Retry retorna 200 OK e os dados do medicamento existente."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+        medicamento_id = Medicamento.objects.get(paciente=self.user, nome='Ibuprofeno').pk
+
+        response = self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['medicamento']['id'], medicamento_id)
+        self.assertIn('agendamentos', response.data)
+        self.assertEqual(len(response.data['agendamentos']), 2)
+
+    def test_retry_nao_duplica_agendamentos(self):
+        """Retry não cria novos agendamentos para o medicamento existente."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(Agendamento.objects.filter(medicamento__nome='Ibuprofeno').count(), 2)
+
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(Agendamento.objects.filter(medicamento__nome='Ibuprofeno').count(), 2)
+
+    def test_reativar_inativo_continua_funcionando(self):
+        """Cadastro de medicamento inativo com mesmo nome continua sendo reativado."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+        medicamento = Medicamento.objects.get(paciente=self.user, nome='Ibuprofeno')
+        self.client.post(f'/api/medicamentos/{medicamento.pk}/inativar/')
+        medicamento.refresh_from_db()
+        self.assertFalse(medicamento.is_active)
+
+        response = self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        medicamento.refresh_from_db()
+        self.assertTrue(medicamento.is_active)
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user, nome='Ibuprofeno').count(), 1)
+
+    def test_nomes_diferentes_criam_medicamentos_separados(self):
+        """Medicamentos com nomes diferentes são cadastrados normalmente."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+
+        payload2 = {**self.payload, "nome": "Paracetamol"}
+        response = self.client.post('/api/medicamentos/', payload2, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Medicamento.objects.filter(paciente=self.user).count(), 2)
+
+    def test_diferentes_usuarios_mesmo_nome(self):
+        """Diferentes usuários podem ter medicamentos com o mesmo nome."""
+        self.client.post('/api/medicamentos/', self.payload, format='json')
+
+        other_user = Paciente.objects.create_user(username='other', password='pass123')
+        self.client.force_authenticate(user=other_user)
+        response = self.client.post('/api/medicamentos/', self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Medicamento.objects.filter(nome='Ibuprofeno').count(), 2)
