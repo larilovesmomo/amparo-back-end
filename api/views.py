@@ -76,6 +76,7 @@ class MedicamentoViewSet(viewsets.ModelViewSet):
                 medicamento.estoque_atual = validated_data.get('estoque_atual', 0)
                 medicamento.aviso_estoque_minimo = validated_data.get('aviso_estoque_minimo', 5)
                 medicamento.save()
+                Agendamento.objects.filter(medicamento=medicamento).delete()
             else:
                 medicamento = Medicamento.objects.create(
                     paciente=request.user,
